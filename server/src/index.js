@@ -16,7 +16,7 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o)) || origin.includes('.vercel.app')) {
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o)) || origin.includes('.vercel.app') || origin.includes('.railway.app')) {
       cb(null, true);
     } else {
       cb(new Error('CORS bloqueado: ' + origin));

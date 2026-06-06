@@ -1,14 +1,32 @@
-const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 
 const DATA_DIR = path.join(__dirname, '../../data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const db = new DatabaseSync(path.join(DATA_DIR, 'luxury.db'));
+let db;
 
-db.exec('PRAGMA journal_mode = WAL');
-db.exec('PRAGMA foreign_keys = ON');
+// En Vercel/Linux usa better-sqlite3; en Windows dev usa node:sqlite
+try {
+  const Database = require('better-sqlite3');
+  db = new Database(path.join(DATA_DIR, 'luxury.db'));
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+} catch {
+  const { DatabaseSync } = require('node:sqlite');
+  const raw = new DatabaseSync(path.join(DATA_DIR, 'luxury.db'));
+  raw.exec('PRAGMA journal_mode = WAL');
+  raw.exec('PRAGMA foreign_keys = ON');
+  // Adaptar API para que sea compatible con better-sqlite3
+  db = raw;
+  db.transaction = function(fn) {
+    return function(...args) {
+      db.exec('BEGIN');
+      try { const r = fn(...args); db.exec('COMMIT'); return r; }
+      catch (e) { db.exec('ROLLBACK'); throw e; }
+    };
+  };
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -88,20 +106,5 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_debt_payments_sale_id ON debt_payments(sale_id);
   CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
 `);
-
-// Helper: run a transaction
-db.transaction = function(fn) {
-  return function(...args) {
-    db.exec('BEGIN');
-    try {
-      const result = fn(...args);
-      db.exec('COMMIT');
-      return result;
-    } catch (e) {
-      db.exec('ROLLBACK');
-      throw e;
-    }
-  };
-};
 
 module.exports = db;

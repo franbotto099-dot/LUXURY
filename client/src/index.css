@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply antialiased text-gray-900 bg-gray-50;
+  }
+  * {
+    @apply box-border;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Smooth scrolling for iOS */
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}

@@ -6,6 +6,6 @@ data/*.db-wal
 dist/
 .DS_Store
 *.log
-client/dist/
+# client/dist/  ← incluido en el repo para deploy a Vercel
 
 .vercel

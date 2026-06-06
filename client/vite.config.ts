@@ -12,4 +12,8 @@ export default defineConfig({
       },
     },
   },
+  define: {
+    // En producción usa VITE_API_URL, en dev usa proxy local
+    __API_URL__: JSON.stringify(process.env.VITE_API_URL || ''),
+  },
 });

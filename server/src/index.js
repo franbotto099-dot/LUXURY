@@ -50,7 +50,7 @@ if (fs.existsSync(clientDist)) {
 
 app.use((err, req, res, _next) => {
   console.error(err);
-  res.status(500).json({ error: err.message || 'Error interno del servidor' });
+  res.status(500).json({ error: 'Error interno del servidor' });
 });
 
 app.listen(PORT, () => {

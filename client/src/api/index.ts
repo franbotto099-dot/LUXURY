@@ -65,8 +65,8 @@ export const deleteCustomer = (id: number) =>
 export const getSales = (params?: Record<string, string | number>) =>
   api.get<Sale[]>('/sales', { params }).then(r => r.data);
 
-export const getTodaySummary = () =>
-  api.get<TodaySummary>('/sales/today').then(r => r.data);
+export const getTodaySummary = (date?: string) =>
+  api.get<TodaySummary>('/sales/today', date ? { params: { date } } : {}).then(r => r.data);
 
 export const getSale = (id: number) =>
   api.get<Sale>(`/sales/${id}`).then(r => r.data);

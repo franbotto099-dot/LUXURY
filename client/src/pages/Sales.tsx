@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, ShoppingCart, TrendingDown, Banknote, CreditCard, Smartphone, Clock } from 'lucide-react';
+import { Plus, Trash2, ShoppingCart, TrendingDown, Banknote, CreditCard, Smartphone, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getTodaySummary, createSale, createExpense, deleteSale, deleteExpense, getProducts, getCustomers, getExpenseCategories } from '../api';
 import type { SaleItem } from '../types';
@@ -13,6 +13,7 @@ import Badge from '../components/ui/Badge';
 
 const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n);
 const fmtTime = (d: string) => new Date(d).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+const toDateStr = (d: Date) => d.toISOString().split('T')[0];
 
 const METHODS = [
   { value: 'cash', label: 'Efectivo' },
@@ -25,14 +26,20 @@ const METHOD_BADGES: Record<string, 'green' | 'blue' | 'purple' | 'yellow'> = { 
 
 export default function Sales() {
   const qc = useQueryClient();
-  const { data: summary, isLoading } = useQuery({ queryKey: ['today'], queryFn: getTodaySummary, refetchInterval: 15000 });
+  const todayStr = toDateStr(new Date());
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+
+  const { data: summary, isLoading } = useQuery({
+    queryKey: ['today', selectedDate],
+    queryFn: () => getTodaySummary(selectedDate),
+    refetchInterval: selectedDate === todayStr ? 15000 : false,
+  });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: () => getProducts() });
   const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: () => getCustomers() });
   const { data: categories } = useQuery({ queryKey: ['expense-categories'], queryFn: getExpenseCategories });
 
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
 
   // Sale form state
   const [items, setItems] = useState<SaleItem[]>([{ product_id: null, product_name: '', quantity: 1, price: 0, subtotal: 0 }]);
@@ -96,13 +103,28 @@ export default function Sales() {
     const validItems = items.filter(i => i.product_name && i.quantity > 0 && i.price > 0);
     if (validItems.length === 0) return toast.error('Agregá al menos un producto');
     if (payMethod === 'credit' && !customerId) return toast.error('Seleccioná un cliente para ventas al fiado');
-    saleMutation.mutate({ items: validItems, payment_method: payMethod, customer_id: customerId ? Number(customerId) : null, notes: saleNotes });
+    saleMutation.mutate({ items: validItems, payment_method: payMethod, customer_id: customerId ? Number(customerId) : null, notes: saleNotes, date: selectedDate });
   };
 
   const submitExpense = () => {
     if (!expCategory || !expAmount) return toast.error('Completá categoría y monto');
-    expenseMutation.mutate({ category: expCategory, amount: Number(expAmount), description: expDesc });
+    expenseMutation.mutate({ category: expCategory, amount: Number(expAmount), description: expDesc, date: selectedDate });
   };
+
+  const goToPrev = () => {
+    const d = new Date(selectedDate + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(toDateStr(d));
+  };
+
+  const goToNext = () => {
+    if (selectedDate >= todayStr) return;
+    const d = new Date(selectedDate + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    setSelectedDate(toDateStr(d));
+  };
+
+  const displayDate = new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   if (isLoading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600" /></div>;
   const s = summary!;
@@ -112,7 +134,19 @@ export default function Sales() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Caja del día</h1>
-          <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <div className="flex items-center gap-0.5 mt-0.5">
+            <button onClick={goToPrev} className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+              <ChevronLeft size={16} />
+            </button>
+            <p className="text-sm text-gray-500 px-1">{displayDate}</p>
+            <button
+              onClick={goToNext}
+              disabled={selectedDate >= todayStr}
+              className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => setShowExpenseModal(true)}>
@@ -162,10 +196,14 @@ export default function Sales() {
       {/* Transactions */}
       <Card>
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-sm font-semibold text-gray-700">Transacciones de hoy ({s.transactions.length})</h3>
+          <h3 className="text-sm font-semibold text-gray-700">
+            Transacciones {selectedDate === todayStr ? 'de hoy' : 'del día'} ({s.transactions.length})
+          </h3>
         </div>
         {s.transactions.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">Sin movimientos hoy. ¡Registrá tu primera venta!</p>
+          <p className="text-sm text-gray-400 text-center py-8">
+            {selectedDate === todayStr ? 'Sin movimientos hoy. ¡Registrá tu primera venta!' : 'Sin movimientos en este día.'}
+          </p>
         ) : (
           <div className="divide-y">
             {s.transactions.map((t, i) => (

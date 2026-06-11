@@ -30,7 +30,7 @@ router.get('/', (req, res) => {
 });
 
 router.get('/today', (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = req.query.date || new Date().toISOString().split('T')[0];
   const sales = db.prepare(`
     SELECT COALESCE(SUM(total), 0) AS total_sales,
       COUNT(*) AS count,

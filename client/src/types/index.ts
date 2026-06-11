@@ -7,6 +7,7 @@ export interface Product {
   stock: number;
   min_stock: number;
   description: string;
+  image_url?: string;
   active: number;
   created_at: string;
   updated_at: string;

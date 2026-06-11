@@ -42,12 +42,12 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, category = '', sale_price, cost_price = 0, stock = 0, min_stock = 5, description = '' } = req.body;
+  const { name, category = '', sale_price, cost_price = 0, stock = 0, min_stock = 5, description = '', image_url = '' } = req.body;
   if (!name || sale_price == null) return res.status(400).json({ error: 'Nombre y precio de venta requeridos' });
 
   const r = db.prepare(
-    'INSERT INTO products (name, category, sale_price, cost_price, stock, min_stock, description) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(name.trim(), category.trim(), Number(sale_price), Number(cost_price), Number(stock), Number(min_stock), description.trim());
+    'INSERT INTO products (name, category, sale_price, cost_price, stock, min_stock, description, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(name.trim(), category.trim(), Number(sale_price), Number(cost_price), Number(stock), Number(min_stock), description.trim(), image_url);
 
   res.status(201).json(db.prepare('SELECT * FROM products WHERE id = ?').get(r.lastInsertRowid));
 });
@@ -56,7 +56,7 @@ router.put('/:id', (req, res) => {
   const p = db.prepare('SELECT id FROM products WHERE id = ?').get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Producto no encontrado' });
 
-  const { name, category, sale_price, cost_price, stock, min_stock, description } = req.body;
+  const { name, category, sale_price, cost_price, stock, min_stock, description, image_url } = req.body;
   db.prepare(`UPDATE products SET
     name = COALESCE(?, name),
     category = COALESCE(?, category),
@@ -65,6 +65,7 @@ router.put('/:id', (req, res) => {
     stock = COALESCE(?, stock),
     min_stock = COALESCE(?, min_stock),
     description = COALESCE(?, description),
+    image_url = COALESCE(?, image_url),
     updated_at = CURRENT_TIMESTAMP
     WHERE id = ?`
   ).run(
@@ -75,6 +76,7 @@ router.put('/:id', (req, res) => {
     stock != null ? Number(stock) : null,
     min_stock != null ? Number(min_stock) : null,
     description != null ? String(description).trim() : null,
+    image_url != null ? image_url : null,
     req.params.id
   );
 

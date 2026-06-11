@@ -108,4 +108,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
 `);
 
+try { db.exec('ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ""'); } catch {}
+
 module.exports = db;

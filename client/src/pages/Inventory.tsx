@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, AlertTriangle, Upload, Pencil, Trash2, Package } from 'lucide-react';
+import { Plus, Search, AlertTriangle, Upload, Pencil, Trash2, Package, X } from 'lucide-react';
 import Papa from 'papaparse';
 import toast from 'react-hot-toast';
 import { getProducts, getCategories, createProduct, updateProduct, deleteProduct, importProducts, getLowStockProducts } from '../api';
@@ -15,7 +15,9 @@ import { useSearchParams } from 'react-router-dom';
 
 const fmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n);
 
-const EMPTY_FORM = { name: '', category: '', sale_price: '', cost_price: '', stock: '', min_stock: '5', description: '' };
+const EMPTY_FORM = { name: '', category: '', sale_price: '', cost_price: '', stock: '', min_stock: '5', description: '', image_url: '' };
+
+const isValidImageSrc = (url: string) => url.startsWith('data:') || url.startsWith('http') || url.startsWith('https') || url.startsWith('/');
 
 export default function Inventory() {
   const qc = useQueryClient();
@@ -26,7 +28,9 @@ export default function Inventory() {
   const [showModal, setShowModal] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [dragOver, setDragOver] = useState(false);
   const csvRef = useRef<HTMLInputElement>(null);
+  const imgRef = useRef<HTMLInputElement>(null);
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['products', search, category, lowStockFilter],
@@ -67,13 +71,13 @@ export default function Inventory() {
   const openCreate = () => { setEditProduct(null); setForm(EMPTY_FORM); setShowModal(true); };
   const openEdit = (p: Product) => {
     setEditProduct(p);
-    setForm({ name: p.name, category: p.category, sale_price: String(p.sale_price), cost_price: String(p.cost_price), stock: String(p.stock), min_stock: String(p.min_stock), description: p.description });
+    setForm({ name: p.name, category: p.category, sale_price: String(p.sale_price), cost_price: String(p.cost_price), stock: String(p.stock), min_stock: String(p.min_stock), description: p.description, image_url: p.image_url || '' });
     setShowModal(true);
   };
 
   const handleSubmit = () => {
     if (!form.name || !form.sale_price) return toast.error('Nombre y precio de venta requeridos');
-    const data = { name: form.name, category: form.category, sale_price: Number(form.sale_price), cost_price: Number(form.cost_price), stock: Number(form.stock), min_stock: Number(form.min_stock), description: form.description };
+    const data = { name: form.name, category: form.category, sale_price: Number(form.sale_price), cost_price: Number(form.cost_price), stock: Number(form.stock), min_stock: Number(form.min_stock), description: form.description, image_url: form.image_url };
     editProduct ? updateMutation.mutate({ id: editProduct.id, data }) : createMutation.mutate(data);
   };
 
@@ -98,6 +102,25 @@ export default function Inventory() {
       },
       error: () => toast.error('Error al leer el CSV'),
     });
+  };
+
+  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setForm(p => ({ ...p, image_url: ev.target?.result as string }));
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleImageDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = ev => setForm(p => ({ ...p, image_url: ev.target?.result as string }));
+    reader.readAsDataURL(file);
   };
 
   const margin = (p: Product) => p.sale_price > 0 ? Math.round(((p.sale_price - p.cost_price) / p.sale_price) * 100) : 0;
@@ -159,31 +182,36 @@ export default function Inventory() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {products!.map(p => (
-            <Card key={p.id} className="p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-semibold text-gray-900 truncate">{p.name}</h3>
-                  {p.category && <p className="text-xs text-gray-400">{p.category}</p>}
+            <Card key={p.id} className={p.image_url ? 'overflow-hidden' : 'p-4'}>
+              {p.image_url && (
+                <img src={p.image_url} alt={p.name} className="w-full h-28 object-cover" />
+              )}
+              <div className={p.image_url ? 'p-4' : ''}>
+                <div className="flex items-start justify-between mb-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate">{p.name}</h3>
+                    {p.category && <p className="text-xs text-gray-400">{p.category}</p>}
+                  </div>
+                  <div className="flex gap-1 ml-2">
+                    <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><Pencil size={13} /></button>
+                    <button onClick={() => confirm('¿Eliminar producto?') && deleteMutation.mutate(p.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
+                  </div>
                 </div>
-                <div className="flex gap-1 ml-2">
-                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><Pencil size={13} /></button>
-                  <button onClick={() => confirm('¿Eliminar producto?') && deleteMutation.mutate(p.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
+
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-base font-bold text-gray-900">{fmt(p.sale_price)}</span>
+                  {p.cost_price > 0 && <span className="text-xs text-gray-400">Costo: {fmt(p.cost_price)} • {margin(p)}% margen</span>}
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-base font-bold text-gray-900">{fmt(p.sale_price)}</span>
-                {p.cost_price > 0 && <span className="text-xs text-gray-400">Costo: {fmt(p.cost_price)} • {margin(p)}% margen</span>}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {p.stock <= 0 ? (
-                  <Badge label="Sin stock" variant="red" />
-                ) : p.stock <= p.min_stock ? (
-                  <Badge label={`Stock bajo: ${p.stock}`} variant="yellow" />
-                ) : (
-                  <Badge label={`Stock: ${p.stock}`} variant="green" />
-                )}
+                <div className="flex items-center gap-2">
+                  {p.stock <= 0 ? (
+                    <Badge label="Sin stock" variant="red" />
+                  ) : p.stock <= p.min_stock ? (
+                    <Badge label={`Stock bajo: ${p.stock}`} variant="yellow" />
+                  ) : (
+                    <Badge label={`Stock: ${p.stock}`} variant="green" />
+                  )}
+                </div>
               </div>
             </Card>
           ))}
@@ -209,6 +237,47 @@ export default function Inventory() {
             <Input label="Stock mínimo" type="number" min="0" value={form.min_stock} onChange={e => setForm(p => ({ ...p, min_stock: e.target.value }))} />
           </div>
           <Input label="Descripción" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Opcional..." />
+
+          {/* Imagen */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Imagen</label>
+            {form.image_url && isValidImageSrc(form.image_url) && (
+              <div className="relative rounded-lg overflow-hidden border border-gray-200">
+                <img src={form.image_url} alt="" className="w-full h-28 object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setForm(p => ({ ...p, image_url: '' }))}
+                  className="absolute top-1.5 right-1.5 bg-white/90 rounded-full p-0.5 text-gray-500 hover:text-red-500 shadow-sm"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleImageDrop}
+              onClick={() => imgRef.current?.click()}
+              className={`cursor-pointer rounded-lg border-2 border-dashed py-3 text-center transition-colors ${dragOver ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-green-300 hover:bg-gray-50'}`}
+            >
+              <Upload size={16} className="mx-auto mb-1 text-gray-400" />
+              <p className="text-xs text-gray-500">Arrastrá una imagen o hacé clic para subir</p>
+            </div>
+            <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px bg-gray-100" />
+              <span className="text-xs text-gray-400">o pegá una URL</span>
+              <div className="flex-1 h-px bg-gray-100" />
+            </div>
+            <input
+              type="url"
+              placeholder="https://..."
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
+              value={form.image_url.startsWith('data:') ? '' : form.image_url}
+              onChange={e => setForm(p => ({ ...p, image_url: e.target.value }))}
+            />
+          </div>
+
           <Button onClick={handleSubmit} loading={createMutation.isPending || updateMutation.isPending} className="w-full">
             {editProduct ? 'Guardar cambios' : 'Crear producto'}
           </Button>

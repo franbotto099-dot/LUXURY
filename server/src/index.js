@@ -25,6 +25,9 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '5mb' }));
 
+const { ensureReady } = require('./db');
+app.use(ensureReady);
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/customers', require('./routes/customers'));

@@ -94,7 +94,9 @@ async function initDB() {
   `);
 }
 
-initDB().catch(err => console.error('Error inicializando DB:', err.message));
+const initPromise = initDB().catch(err => console.error('Error inicializando DB:', err.message));
+
+const ensureReady = (req, res, next) => initPromise.then(() => next()).catch(next);
 
 const db = {
   get: async (sql, params = []) => {
@@ -137,4 +139,4 @@ const wrap = fn => async (req, res, next) => {
   try { await fn(req, res, next); } catch (e) { next(e); }
 };
 
-module.exports = { db, wrap };
+module.exports = { db, wrap, initPromise, ensureReady };

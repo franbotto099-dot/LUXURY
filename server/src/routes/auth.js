@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db, wrap } = require('../db');
+const { db, wrap, initPromise } = require('../db');
 
 const router = express.Router();
 const SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
@@ -14,7 +14,7 @@ async function ensureAdminExists() {
     console.log('Usuario inicial creado: admin / admin123 — cambia la contraseña luego');
   }
 }
-ensureAdminExists().catch(console.error);
+initPromise.then(ensureAdminExists).catch(console.error);
 
 router.post('/login', wrap(async (req, res) => {
   const { username, password } = req.body;

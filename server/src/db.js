@@ -1,113 +1,140 @@
-const path = require('path');
-const fs = require('fs');
+require('dotenv').config();
+const { Pool } = require('pg');
 
-// En Vercel el filesystem es de solo lectura excepto /tmp
-const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../../data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
-let db;
-
-// En Vercel/Linux usa better-sqlite3; en Windows dev usa node:sqlite
-try {
-  const Database = require('better-sqlite3');
-  db = new Database(path.join(DATA_DIR, 'luxury.db'));
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-} catch {
-  const { DatabaseSync } = require('node:sqlite');
-  const raw = new DatabaseSync(path.join(DATA_DIR, 'luxury.db'));
-  raw.exec('PRAGMA journal_mode = WAL');
-  raw.exec('PRAGMA foreign_keys = ON');
-  // Adaptar API para que sea compatible con better-sqlite3
-  db = raw;
-  db.transaction = function(fn) {
-    return function(...args) {
-      db.exec('BEGIN');
-      try { const r = fn(...args); db.exec('COMMIT'); return r; }
-      catch (e) { db.exec('ROLLBACK'); throw e; }
-    };
-  };
+// Converts ? placeholders to $1, $2, $3...
+function p(sql) {
+  let i = 0;
+  return sql.replace(/\?/g, () => `$${++i}`);
 }
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-  CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    category TEXT DEFAULT '',
-    sale_price REAL NOT NULL DEFAULT 0,
-    cost_price REAL NOT NULL DEFAULT 0,
-    stock INTEGER NOT NULL DEFAULT 0,
-    min_stock INTEGER NOT NULL DEFAULT 5,
-    description TEXT DEFAULT '',
-    active INTEGER NOT NULL DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+    CREATE TABLE IF NOT EXISTS products (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT DEFAULT '',
+      sale_price NUMERIC NOT NULL DEFAULT 0,
+      cost_price NUMERIC NOT NULL DEFAULT 0,
+      stock INTEGER NOT NULL DEFAULT 0,
+      min_stock INTEGER NOT NULL DEFAULT 5,
+      description TEXT DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      image_url TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-  CREATE TABLE IF NOT EXISTS customers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    phone TEXT DEFAULT '',
-    email TEXT DEFAULT '',
-    notes TEXT DEFAULT '',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+    CREATE TABLE IF NOT EXISTS customers (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-  CREATE TABLE IF NOT EXISTS sales (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER REFERENCES customers(id),
-    total REAL NOT NULL DEFAULT 0,
-    payment_method TEXT NOT NULL DEFAULT 'cash',
-    notes TEXT DEFAULT '',
-    date TEXT NOT NULL DEFAULT (date('now', 'localtime')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+    CREATE TABLE IF NOT EXISTS sales (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER REFERENCES customers(id),
+      total NUMERIC NOT NULL DEFAULT 0,
+      payment_method TEXT NOT NULL DEFAULT 'cash',
+      notes TEXT DEFAULT '',
+      date DATE NOT NULL DEFAULT CURRENT_DATE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-  CREATE TABLE IF NOT EXISTS sale_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-    product_id INTEGER REFERENCES products(id),
-    product_name TEXT NOT NULL,
-    quantity INTEGER NOT NULL DEFAULT 1,
-    price REAL NOT NULL DEFAULT 0,
-    subtotal REAL NOT NULL DEFAULT 0
-  );
+    CREATE TABLE IF NOT EXISTS sale_items (
+      id SERIAL PRIMARY KEY,
+      sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+      product_id INTEGER REFERENCES products(id),
+      product_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      price NUMERIC NOT NULL DEFAULT 0,
+      subtotal NUMERIC NOT NULL DEFAULT 0
+    );
 
-  CREATE TABLE IF NOT EXISTS expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category TEXT NOT NULL,
-    amount REAL NOT NULL DEFAULT 0,
-    description TEXT DEFAULT '',
-    date TEXT NOT NULL DEFAULT (date('now', 'localtime')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+    CREATE TABLE IF NOT EXISTS expenses (
+      id SERIAL PRIMARY KEY,
+      category TEXT NOT NULL,
+      amount NUMERIC NOT NULL DEFAULT 0,
+      description TEXT DEFAULT '',
+      date DATE NOT NULL DEFAULT CURRENT_DATE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-  CREATE TABLE IF NOT EXISTS debt_payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sale_id INTEGER NOT NULL REFERENCES sales(id),
-    customer_id INTEGER NOT NULL REFERENCES customers(id),
-    amount REAL NOT NULL DEFAULT 0,
-    date TEXT NOT NULL DEFAULT (date('now', 'localtime')),
-    notes TEXT DEFAULT '',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+    CREATE TABLE IF NOT EXISTS debt_payments (
+      id SERIAL PRIMARY KEY,
+      sale_id INTEGER NOT NULL REFERENCES sales(id),
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      amount NUMERIC NOT NULL DEFAULT 0,
+      date DATE NOT NULL DEFAULT CURRENT_DATE,
+      notes TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-  CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date);
-  CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
-  CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id);
-  CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
-  CREATE INDEX IF NOT EXISTS idx_debt_payments_customer_id ON debt_payments(customer_id);
-  CREATE INDEX IF NOT EXISTS idx_debt_payments_sale_id ON debt_payments(sale_id);
-  CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
-`);
+    CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date);
+    CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
+    CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id);
+    CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
+    CREATE INDEX IF NOT EXISTS idx_debt_payments_customer_id ON debt_payments(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_debt_payments_sale_id ON debt_payments(sale_id);
+    CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
+  `);
+}
 
-try { db.exec('ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ""'); } catch {}
+initDB().catch(err => console.error('Error inicializando DB:', err.message));
 
-module.exports = db;
+const db = {
+  get: async (sql, params = []) => {
+    const { rows } = await pool.query(p(sql), params);
+    return rows[0] || null;
+  },
+  all: async (sql, params = []) => {
+    const { rows } = await pool.query(p(sql), params);
+    return rows;
+  },
+  run: (sql, params = []) => pool.query(p(sql), params),
+  transaction: async (fn) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const tx = {
+        get: async (sql, params = []) => {
+          const { rows } = await client.query(p(sql), params);
+          return rows[0] || null;
+        },
+        all: async (sql, params = []) => {
+          const { rows } = await client.query(p(sql), params);
+          return rows;
+        },
+        run: (sql, params = []) => client.query(p(sql), params),
+      };
+      const result = await fn(tx);
+      await client.query('COMMIT');
+      return result;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+};
+
+const wrap = fn => async (req, res, next) => {
+  try { await fn(req, res, next); } catch (e) { next(e); }
+};
+
+module.exports = { db, wrap };

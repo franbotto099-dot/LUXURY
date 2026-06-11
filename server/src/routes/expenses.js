@@ -1,5 +1,5 @@
 const express = require('express');
-const db = require('../db');
+const { db, wrap } = require('../db');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -12,7 +12,7 @@ const CATEGORIES = [
 
 router.get('/categories', (_, res) => res.json(CATEGORIES));
 
-router.get('/', (req, res) => {
+router.get('/', wrap(async (req, res) => {
   const { from, to, category, limit = 50, offset = 0 } = req.query;
   let sql = 'SELECT * FROM expenses WHERE 1=1';
   const params = [];
@@ -24,39 +24,40 @@ router.get('/', (req, res) => {
   sql += ' ORDER BY date DESC, created_at DESC LIMIT ? OFFSET ?';
   params.push(Number(limit), Number(offset));
 
-  res.json(db.prepare(sql).all(...params));
-});
+  res.json(await db.all(sql, params));
+}));
 
-router.post('/', (req, res) => {
+router.post('/', wrap(async (req, res) => {
   const { category, amount, description = '', date } = req.body;
   if (!category || !amount) return res.status(400).json({ error: 'Categoría y monto requeridos' });
 
-  const r = db.prepare(
-    'INSERT INTO expenses (category, amount, description, date) VALUES (?, ?, ?, ?)'
-  ).run(category, Number(amount), description.trim(), date || new Date().toISOString().split('T')[0]);
+  const row = await db.get(
+    'INSERT INTO expenses (category, amount, description, date) VALUES (?,?,?,?) RETURNING *',
+    [category, Number(amount), description.trim(), date || new Date().toISOString().split('T')[0]]
+  );
+  res.status(201).json(row);
+}));
 
-  res.status(201).json(db.prepare('SELECT * FROM expenses WHERE id = ?').get(r.lastInsertRowid));
-});
-
-router.put('/:id', (req, res) => {
-  const e = db.prepare('SELECT id FROM expenses WHERE id = ?').get(req.params.id);
-  if (!e) return res.status(404).json({ error: 'Gasto no encontrado' });
+router.put('/:id', wrap(async (req, res) => {
+  const existing = await db.get('SELECT id FROM expenses WHERE id = ?', [req.params.id]);
+  if (!existing) return res.status(404).json({ error: 'Gasto no encontrado' });
 
   const { category, amount, description, date } = req.body;
-  db.prepare(`UPDATE expenses SET
-    category = COALESCE(?, category),
-    amount = COALESCE(?, amount),
-    description = COALESCE(?, description),
-    date = COALESCE(?, date)
-    WHERE id = ?`
-  ).run(category || null, amount != null ? Number(amount) : null, description != null ? String(description).trim() : null, date || null, req.params.id);
+  const row = await db.get(`
+    UPDATE expenses SET
+      category = COALESCE(?, category),
+      amount = COALESCE(?, amount),
+      description = COALESCE(?, description),
+      date = COALESCE(?, date)
+    WHERE id = ? RETURNING *`,
+    [category || null, amount != null ? Number(amount) : null, description != null ? String(description).trim() : null, date || null, req.params.id]
+  );
+  res.json(row);
+}));
 
-  res.json(db.prepare('SELECT * FROM expenses WHERE id = ?').get(req.params.id));
-});
-
-router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM expenses WHERE id = ?').run(req.params.id);
+router.delete('/:id', wrap(async (req, res) => {
+  await db.run('DELETE FROM expenses WHERE id = ?', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 module.exports = router;

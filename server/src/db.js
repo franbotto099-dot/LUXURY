@@ -91,6 +91,8 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_debt_payments_customer_id ON debt_payments(customer_id);
     CREATE INDEX IF NOT EXISTS idx_debt_payments_sale_id ON debt_payments(sale_id);
     CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
+
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
   `);
 }
 
